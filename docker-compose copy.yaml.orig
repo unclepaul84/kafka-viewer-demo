@@ -1,12 +1,5 @@
 version: '2'
 services:
-
-  request-bin:
-    container_name: request-bin
-    image: weshigbee/requestbin
-    ports:
-      - 8000:8000
-
   envoy-proxy:
     container_name: envoy-proxy
     image: envoyproxy/envoy-dev
@@ -14,10 +7,53 @@ services:
       - "10000:10000"
       - "9901:9901"
     depends_on:
-      - request-bin
-      - oidc-server-mock
+      - kafdrop
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    restart: "no"
+    volumes:
+      - ./gen/descriptor:/proto
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: "kafka:9092"
+      JVM_OPTS: "-Xms16M -Xmx48M -Xss180K -XX:-TieredCompilation -XX:+UseStringDeduplication -noverify"
+      CMD_ARGS: "--message.format=PROTOBUF --protobufdesc.directory=/proto --topic.deleteEnabled=false --topic.createEnabled=false"
+    depends_on:
+      - "kafka"
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+ 
+  envoy-proxy:
+    container_name: envoy-proxy
+    image: envoyproxy/envoy-dev
+    ports:
+      - "10000:10000"
+      - "9901:9901"
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+
   oidc-server-mock:
     container_name: oidc-server-mock
     image: ghcr.io/soluto/oidc-server-mock:latest
@@ -88,19 +124,12 @@ services:
                   "Description": "Client for authorization code flow",
                   "AllowedGrantTypes": ["authorization_code"],
                   "AllowAccessTokensViaBrowser": true,
-                  "RedirectUris": ["http://localhost:10000/callback","http://localhost:10000"],
+                  "RedirectUris": ["http://localhost:8000/auth"],
                   "RequirePkce": false,
                   "AllowedScopes": ["openid", "profile", "email", "s3viewer"],
                   "IdentityTokenLifetime": 3600,
                   "AccessTokenLifetime": 3600,
-                  "RequireClientSecret": false,
-                  "Claims": [
-                    {
-                        "Type": "s3paths",
-                        "Value": "['/current', '/archive/']",
-                        "ValueType": "json"
-                    }
-                  ]
+                  "RequireClientSecret": false
                  
                 },
                 {
