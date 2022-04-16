@@ -1,11 +1,40 @@
 version: '2'
 services:
 
-  request-bin:
-    container_name: request-bin
-    image: weshigbee/requestbin
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    restart: "no"
+    volumes:
+      - ./gen/descriptor:/proto
     ports:
-      - 8000:8000
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: "kafka:9092"
+      JVM_OPTS: "-Xms16M -Xmx48M -Xss180K -XX:-TieredCompilation -XX:+UseStringDeduplication -noverify"
+      CMD_ARGS: "--message.format=PROTOBUF --protobufdesc.directory=/proto --topic.deleteEnabled=false --topic.createEnabled=false"
+    depends_on:
+      - "kafka"
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   envoy-proxy:
     container_name: envoy-proxy
@@ -14,7 +43,7 @@ services:
       - "10000:10000"
       - "9901:9901"
     depends_on:
-      - request-bin
+      - kafdrop
       - oidc-server-mock
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml
@@ -28,18 +57,18 @@ services:
       API_SCOPES_INLINE: |
         [
           {
-            "Name": "s3viewer",
-            "UserClaims": ["s3paths"]
+            "Name": "kafka-viewer",
+            "UserClaims": ["kafka-viewer-envs"]
           }
         ]
 
       API_RESOURCES_INLINE: |
         [
           {
-            "Name": "s3viewer-app",
-            "Scopes": ["s3viewer"],
-            "ApiSecrets": ["s3viewer"],
-            "UserClaims": ["s3paths"]
+            "Name": "kafka-viewer-app",
+            "Scopes": ["kafka-viewer"],
+            "ApiSecrets": ["kafka-viewer"],
+            "UserClaims": ["kafka-viewer-envs"]
           }
         ]
       SERVER_OPTIONS_INLINE: |
@@ -60,8 +89,8 @@ services:
       IDENTITY_RESOURCES_INLINE: |
         [
           {
-            "Name": "s3viewer-2",
-            "ClaimTypes": ["s3paths"]
+            "Name": "kafka-viewer-2",
+            "ClaimTypes": ["kafka-viewer-envs"]
           }
         ]
       USERS_CONFIGURATION_INLINE: |
@@ -72,8 +101,20 @@ services:
             "Password":"pwd",
             "Claims": [
                 {
-                "Type": "s3paths",
-                "Value": "['/current', '/archive/']",
+                "Type": "kafka-viewer-envs",
+                "Value": "['sys-50', 'sys-51']",
+                "ValueType": "json"
+              }
+            ]
+          },
+          {
+            "SubjectId":"2",
+            "Username":"User2",
+            "Password":"pwd",
+            "Claims": [
+                {
+                "Type": "kafka-viewer-envs",
+                "Value": "['sys-60']",
                 "ValueType": "json"
               }
             ]
@@ -90,17 +131,11 @@ services:
                   "AllowAccessTokensViaBrowser": true,
                   "RedirectUris": ["http://localhost:10000/callback","http://localhost:10000"],
                   "RequirePkce": false,
-                  "AllowedScopes": ["openid", "profile", "email", "s3viewer"],
+                  "AllowedScopes": ["openid", "profile", "email", "kafka-viewer"],
                   "IdentityTokenLifetime": 3600,
                   "AccessTokenLifetime": 3600,
-                  "RequireClientSecret": false,
-                  "Claims": [
-                    {
-                        "Type": "s3paths",
-                        "Value": "['/current', '/archive/']",
-                        "ValueType": "json"
-                    }
-                  ]
+                  "RequireClientSecret": false
+                  
                  
                 },
                 {
@@ -108,12 +143,12 @@ services:
                   "ClientSecrets": ["client-credentials-flow-client-secret"],
                   "Description": "Client for client credentials flow",
                   "AllowedGrantTypes": ["client_credentials"],
-                  "AllowedScopes": ["s3viewer"],
+                  "AllowedScopes": ["kafka-viewer"],
                   "ClientClaimsPrefix": "",
                   "Claims": [
                     {
-                        "Type": "s3paths",
-                        "Value": "['/current', '/archive/']",
+                        "Type": "kafka-viewer-envs",
+                        "Value": "['sys-50', 'sys-51']",
                         "ValueType": "json"
                     }
                   ]

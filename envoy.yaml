@@ -69,13 +69,14 @@ static_resources:
                 auth_scopes:
                 - openid
                 - profile
-                - s3viewer
+                - kafka-viewer
 
           - name: envoy.filters.http.jwt_authn      
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
               providers:
                 provider1:
+                  payload_in_metadata: "payload"
                   remote_jwks:
                     http_uri:
                       uri: "http://oidc-server-mock/.well-known/openid-configuration/jwks"
@@ -85,9 +86,30 @@ static_resources:
 
               rules:
                  - match:
-                     prefix: /testjwt
+                     prefix: /
                    requires:
                      provider_name: provider1
+
+          - name: envoy.filters.http.rbac
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+              rules:
+                action: ALLOW
+                policies:
+                   "admin":
+                      principals:
+                        - metadata:
+                            filter: envoy.filters.http.jwt_authn
+                            path:
+                              - key: payload
+                              - key: kafka-viewer-envs
+                            value:
+                                list_match:
+                                  one_of:
+                                    string_match:
+                                      exact: sys-50
+                      permissions:
+                        - any: true
 
           - name: envoy.filters.http.router
             typed_config:
@@ -105,8 +127,8 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: request-bin
-                port_value: 8000
+                address: kafdrop
+                port_value: 9000
 
   - name: oauth
     connect_timeout: 2s
@@ -121,5 +143,3 @@ static_resources:
               socket_address:
                 address: oidc-server-mock
                 port_value: 80
-
-#https://github.com/envoyproxy/envoy/issues/7913
