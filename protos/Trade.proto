@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+message TradeTopic {
+    oneof event{
+        TradeEvent tradeEvent =1;
+        Marker marker = 2;
+    }
+
+}
+
+
+message TradeEvent
+{
+    float qty = 1;
+    float price = 2;
+}
+
+message Marker 
+{
+    bool is_end = 1; 
+    
+}

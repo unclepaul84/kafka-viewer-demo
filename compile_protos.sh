@@ -1,0 +1,1 @@
+protoc --include_source_info --include_imports --descriptor_set_out=gen/descriptor/Trades.desc --python_out=gen/python protos/*.proto

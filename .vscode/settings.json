@@ -1,0 +1,8 @@
+{
+    "protoc": {
+        "options": [
+            "--proto_path=protos/",        
+            "--java_out=gen/java"
+        ]
+    }
+}
