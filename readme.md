@@ -18,7 +18,7 @@ flowchart LR
     user-.get token.->oidc-provider
     envoy-proxy-sidecar-.verify token.->oidc-provider
     kafka[(Kafka)]
-    kafka-viewer-->kafka
+    kafka-viewer-->|Cert Auth|kafka
 ```
 
 ### Running
